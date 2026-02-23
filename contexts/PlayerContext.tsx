@@ -17,6 +17,7 @@ type PlayerContextValue = {
   playerData: PlayerData;
   isLoading: boolean;
   save: (data: PlayerData) => void;
+  addCoins: (coins: number) => void;
   addXpAndCoins: (xp: number, coins: number, kills: number, headshots: number) => void;
   completeMission: (missionId: string, stars: number) => void;
   buyWeapon: (weaponId: string) => boolean;
@@ -64,6 +65,18 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const save = useCallback((data: PlayerData) => {
     setPlayerData(data);
     void persist(data);
+  }, [persist]);
+
+  const addCoins = useCallback((coins: number) => {
+    if (coins <= 0) return;
+    setPlayerData(prev => {
+      const updated: PlayerData = {
+        ...prev,
+        coins: prev.coins + coins,
+      };
+      void persist(updated);
+      return updated;
+    });
   }, [persist]);
 
   const addXpAndCoins = useCallback((xp: number, coins: number, kills: number, headshots: number) => {
@@ -191,6 +204,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     playerData,
     isLoading,
     save,
+    addCoins,
     addXpAndCoins,
     completeMission,
     buyWeapon,
@@ -203,6 +217,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     playerData,
     isLoading,
     save,
+    addCoins,
     addXpAndCoins,
     completeMission,
     buyWeapon,

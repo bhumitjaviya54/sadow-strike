@@ -4,6 +4,7 @@ import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { PlayerProvider } from "@/contexts/PlayerContext";
 import { COLORS } from "@/constants/color";
+import { isAdMobRuntimeSupported } from "@/constants/admob";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -63,7 +64,18 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   useEffect(() => {
-    SplashScreen.hideAsync();
+    const setup = async () => {
+      if (isAdMobRuntimeSupported) {
+        try {
+          const ads = await import("react-native-google-mobile-ads");
+          await ads.default().initialize();
+        } catch {
+          // Keep app functional if ads runtime is unavailable.
+        }
+      }
+      await SplashScreen.hideAsync();
+    };
+    void setup();
   }, []);
 
   return (

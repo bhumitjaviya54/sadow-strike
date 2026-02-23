@@ -1,21 +1,29 @@
+import { ADMOB_UNIT_IDS, isAdMobRuntimeSupported } from '@/constants/admob';
 import { COLORS } from '@/constants/color';
 import { xpForLevel } from '@/constants/gameData';
 import { usePlayer } from '@/contexts/PlayerContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { ChevronRight, Crosshair, Gift, Shield, User } from 'lucide-react-native';
-import React, { useEffect, useRef } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Alert, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function MainMenu() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { playerData, canClaimDaily, claimDailyReward } = usePlayer();
+  const { playerData, canClaimDaily, claimDailyReward, addCoins } = usePlayer();
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
+  const rewardedRef = useRef<any>(null);
+  const rewardedReadyRef = useRef(false);
+  const rewardInProgressRef = useRef(false);
+  const adEventsRef = useRef<any>(null);
+
+  const [BannerComponent, setBannerComponent] = useState<any>(null);
+  const [bannerSize, setBannerSize] = useState<any>(null);
 
   useEffect(() => {
     Animated.parallel([
@@ -31,8 +39,89 @@ export default function MainMenu() {
     ).start();
   }, []);
 
+  useEffect(() => {
+    if (!isAdMobRuntimeSupported) return;
+    let mounted = true;
+    let cleanup = () => {};
+
+    const loadAds = async () => {
+      try {
+        const ads = await import('react-native-google-mobile-ads');
+        if (!mounted) return;
+
+        adEventsRef.current = ads.AdEventType;
+        setBannerComponent(() => ads.BannerAd);
+        setBannerSize(ads.BannerAdSize.ANCHORED_ADAPTIVE_BANNER);
+
+        const rewarded = ads.RewardedAd.createForAdRequest(ADMOB_UNIT_IDS.rewarded, {
+          requestNonPersonalizedAdsOnly: true,
+        });
+        rewardedRef.current = rewarded;
+
+        const unsubLoaded = rewarded.addAdEventListener(ads.RewardedAdEventType.LOADED, () => {
+          rewardedReadyRef.current = true;
+        });
+
+        const unsubEarned = rewarded.addAdEventListener(ads.RewardedAdEventType.EARNED_REWARD, () => {
+          addCoins(300);
+          Alert.alert('Reward received', 'You earned 300 coins.');
+        });
+
+        const resetAndReload = () => {
+          rewardedReadyRef.current = false;
+          rewardInProgressRef.current = false;
+          rewarded.load();
+        };
+
+        const unsubClosed = rewarded.addAdEventListener(ads.AdEventType.CLOSED, resetAndReload);
+        const unsubError = rewarded.addAdEventListener(ads.AdEventType.ERROR, resetAndReload);
+
+        rewarded.load();
+
+        cleanup = () => {
+          unsubLoaded();
+          unsubEarned();
+          unsubClosed();
+          unsubError();
+          rewardedRef.current = null;
+          rewardedReadyRef.current = false;
+          rewardInProgressRef.current = false;
+        };
+      } catch {
+        // Keep app functional if ads runtime is unavailable.
+      }
+    };
+
+    void loadAds();
+
+    return () => {
+      mounted = false;
+      cleanup();
+    };
+  }, [addCoins]);
+
   const xpNeeded = xpForLevel(playerData.level);
   const xpPct = xpNeeded > 0 ? playerData.xp / xpNeeded : 0;
+
+  const showRewardedAd = async () => {
+    if (!isAdMobRuntimeSupported || !rewardedRef.current || rewardInProgressRef.current) return;
+
+    if (!rewardedReadyRef.current) {
+      rewardedRef.current.load();
+      Alert.alert('Ad not ready', 'Please try again in a moment.');
+      return;
+    }
+
+    rewardInProgressRef.current = true;
+    try {
+      await rewardedRef.current.show();
+    } catch {
+      rewardInProgressRef.current = false;
+      rewardedReadyRef.current = false;
+      rewardedRef.current.load();
+      Alert.alert('Ad error', 'Could not show rewarded ad right now.');
+    }
+  };
 
   return (
     <LinearGradient colors={['#0B0F15', '#131B27', '#0B0F15']} style={styles.container}>
@@ -121,9 +210,35 @@ export default function MainMenu() {
               <ChevronRight size={16} color={COLORS.textMuted} />
             </Pressable>
           )}
+
+          {isAdMobRuntimeSupported && (
+            <Pressable
+              style={({ pressed }) => [styles.rewardedBtn, pressed && styles.btnPressed]}
+              onPress={() => {
+                void showRewardedAd();
+              }}
+            >
+              <Gift size={18} color={COLORS.primary} />
+              <View style={styles.dailyInfo}>
+                <Text style={styles.rewardedTitle}>WATCH AD REWARD</Text>
+                <Text style={styles.dailySubtitle}>Watch and earn +300 coins</Text>
+              </View>
+              <ChevronRight size={16} color={COLORS.textMuted} />
+            </Pressable>
+          )}
         </View>
 
-        <Text style={styles.versionText}>v1.0 â€” CLASSIFIED</Text>
+        {isAdMobRuntimeSupported && BannerComponent && bannerSize && (
+          <View style={styles.bannerWrap}>
+            <BannerComponent
+              unitId={ADMOB_UNIT_IDS.banner}
+              size={bannerSize}
+              requestOptions={{ requestNonPersonalizedAdsOnly: true }}
+            />
+          </View>
+        )}
+
+        <Text style={styles.versionText}>v1.0 - CLASSIFIED</Text>
       </View>
     </LinearGradient>
   );
@@ -348,6 +463,28 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     fontSize: 11,
     marginTop: 1,
+  },
+  rewardedBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.bgCard,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: 12,
+  },
+  rewardedTitle: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: '700' as const,
+    letterSpacing: 1,
+  },
+  bannerWrap: {
+    alignItems: 'center',
+    marginBottom: 10,
+    minHeight: 52,
   },
   versionText: {
     color: COLORS.textDim,

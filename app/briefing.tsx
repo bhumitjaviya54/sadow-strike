@@ -1,10 +1,11 @@
+import { isAdMobRuntimeSupported, ADMOB_UNIT_IDS } from '@/constants/admob';
 import { COLORS } from '@/constants/color';
 import { ENV_COLORS, MISSIONS, WEAPONS } from '@/constants/gameData';
 import { usePlayer } from '@/contexts/PlayerContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { AlertTriangle, Clock, Crosshair, Target, Zap } from 'lucide-react-native';
-import React from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -13,8 +14,76 @@ export default function BriefingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { playerData } = usePlayer();
+  const [deploying, setDeploying] = useState(false);
+  const interstitialRef = useRef<any>(null);
+  const interstitialReadyRef = useRef(false);
 
   const mission = MISSIONS.find(m => m.id === missionId);
+
+  useEffect(() => {
+    if (!isAdMobRuntimeSupported) return;
+    let mounted = true;
+    let cleanup = () => {};
+
+    const loadInterstitial = async () => {
+      try {
+        const ads = await import('react-native-google-mobile-ads');
+        if (!mounted) return;
+
+        const interstitial = ads.InterstitialAd.createForAdRequest(ADMOB_UNIT_IDS.interstitial, {
+          requestNonPersonalizedAdsOnly: true,
+        });
+        interstitialRef.current = interstitial;
+
+        const unsubLoaded = interstitial.addAdEventListener(ads.AdEventType.LOADED, () => {
+          interstitialReadyRef.current = true;
+        });
+
+        const resetAndReload = () => {
+          interstitialReadyRef.current = false;
+          interstitial.load();
+        };
+
+        const unsubClosed = interstitial.addAdEventListener(ads.AdEventType.CLOSED, resetAndReload);
+        const unsubError = interstitial.addAdEventListener(ads.AdEventType.ERROR, resetAndReload);
+
+        interstitial.load();
+
+        cleanup = () => {
+          unsubLoaded();
+          unsubClosed();
+          unsubError();
+          interstitialRef.current = null;
+          interstitialReadyRef.current = false;
+        };
+      } catch {
+        // Keep app functional if ads runtime is unavailable.
+      }
+    };
+
+    void loadInterstitial();
+
+    return () => {
+      mounted = false;
+      cleanup();
+    };
+  }, []);
+
+  const deployMission = useCallback(async () => {
+    if (!mission || deploying) return;
+    setDeploying(true);
+    try {
+      if (isAdMobRuntimeSupported && interstitialRef.current && interstitialReadyRef.current) {
+        await interstitialRef.current.show();
+      }
+    } catch {
+      // Ignore ad failures and continue to gameplay.
+    } finally {
+      router.push(`/game?missionId=${mission.id}` as any);
+      setDeploying(false);
+    }
+  }, [deploying, mission, router]);
+
   if (!mission) return <View style={styles.container}><Text style={styles.errorText}>Mission not found</Text></View>;
 
   const envColors = ENV_COLORS[mission.environment];
@@ -116,8 +185,11 @@ export default function BriefingScreen() {
       </View>
 
       <Pressable
-        style={({ pressed }) => [styles.deployBtn, pressed && styles.deployPressed]}
-        onPress={() => router.push(`/game?missionId=${mission.id}` as any)}
+        style={({ pressed }) => [styles.deployBtn, pressed && styles.deployPressed, deploying && styles.deployDisabled]}
+        onPress={() => {
+          void deployMission();
+        }}
+        disabled={deploying}
       >
         <LinearGradient
           colors={[COLORS.danger, COLORS.dangerDark]}
@@ -126,7 +198,7 @@ export default function BriefingScreen() {
           style={styles.deployGradient}
         >
           <Crosshair size={20} color={COLORS.white} />
-          <Text style={styles.deployText}>DEPLOY AGENT</Text>
+          <Text style={styles.deployText}>{deploying ? 'PREPARING...' : 'DEPLOY AGENT'}</Text>
         </LinearGradient>
       </Pressable>
     </ScrollView>
@@ -301,6 +373,9 @@ const styles = StyleSheet.create({
   deployPressed: {
     opacity: 0.8,
     transform: [{ scale: 0.98 }],
+  },
+  deployDisabled: {
+    opacity: 0.7,
   },
   deployGradient: {
     flexDirection: 'row',
