@@ -1,32 +1,22 @@
 {
-  "expo": {
-    "plugins": [
-      [
-        "react-native-google-mobile-ads",
-        {
-          "androidAppId": "ca-app-pub-2651344814474355~6760751675",
-          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
-        }
-      ]
-    ],
-    "extra": {
-      "admob": {
-        "banner": "ca-app-pub-2651344814474355/3020128857",
-        "interstitial": "ca-app-pub-2651344814474355/2226610291",
-        "rewarded": "ca-app-pub-2651344814474355/5196388567"
-      },
-      "eas": {
-        "projectId": "37368ae9-8b4b-4b58-918a-98a00ff6262f"
-      }
-    },
-    "android": {
-      "package": "com.bhumit_javiya.sadowstrike"
-    },
-    "ios": {
-      "bundleIdentifier": ".",
-      "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      }
-    }
-  }
+    "expo":  {
+                 "extra":  {
+                               "eas":  {
+                                           "projectId":  "37368ae9-8b4b-4b58-918a-98a00ff6262f"
+                                       }
+                           },
+                 "android":  {
+                                 "package":  "com.bhumit_javiya.sadowstrike",
+                                 "adaptiveIcon":  {
+                                                      "backgroundColor":  "#000000",
+                                                      "foregroundImage":  "./assets/images/adaptive-icon-custom.png"
+                                                  }
+                             },
+                 "ios":  {
+                             "bundleIdentifier":  ".",
+                             "infoPlist":  {
+                                               "ITSAppUsesNonExemptEncryption":  false
+                                           }
+                         }
+             }
 }
